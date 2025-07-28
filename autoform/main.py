@@ -349,17 +349,32 @@ class Mother:
             "body": data.get("content"),
             "url": data.get("url") # This is the target company's URL, not the inquiry form URL
         }
-        print(f"Form data prepared for {generate_code}: { {k: (v[:30] + '...' if isinstance(v, str) and len(v) > 30 else v) for k,v in form_details.items()} }")
+        # Create a formatted string for debugging
+        debug_info = {k: (v[:30] + '...' if isinstance(v, str) and len(v) > 30 else v) for k,v in form_details.items()}
+        print(f"Form data prepared for {generate_code}: {debug_info}")
+
+        # --- CAPTCHA/Anti-bot detection logging ---
+        def detect_captcha(page_source):
+            captcha_keywords = ["captcha", "recaptcha", "I'm not a robot", "ロボットではありません", "認証コード"]
+            for keyword in captcha_keywords:
+                if keyword.lower() in page_source.lower():
+                    return True
+            return False
+        # --- End CAPTCHA detection ---
 
         submission_outcome = {"status": "NG", "reason": "selenium_module_not_initialized"}
         try:
-            # hardware.Place_enter's __init__ should call logicer internally after fetching the page.
-            # url here is the contact_url for the specific company.
-            automaton = hardware.Place_enter(url, form_details) 
-            if not automaton.form: # Check if Place_enter successfully found a form
+            automaton = hardware.Place_enter(url, form_details)
+            if not automaton.form:
                 submission_outcome = {"status": "NG", "reason": "form_not_found_by_place_enter_init"}
             else:
                 submission_outcome = automaton.go_selenium()
+                # Check for CAPTCHA after submission attempt
+                if hasattr(automaton, 'pot') and hasattr(automaton, 'endpoint'):
+                    page_source = str(automaton.pot)
+                    if detect_captcha(page_source):
+                        submission_outcome = {"status": "NG", "reason": "captcha_detected"}
+                        print(f"CAPTCHA detected for {generate_code} at {url}")
             print(f"Selenium submission outcome for {generate_code}: {submission_outcome}")
         except Exception as e:
             submission_outcome = {"status": "NG", "reason": f"selenium_execution_error: {str(e)}"}
